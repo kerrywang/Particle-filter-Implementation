@@ -1,4 +1,6 @@
 reviewer
+.idea/
+cmake-build-debug/
 submission_instructions.*
 build
 solution

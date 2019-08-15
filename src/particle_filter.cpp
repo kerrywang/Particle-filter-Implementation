@@ -1,11 +1,4 @@
-/**
- * particle_filter.cpp
- *
- * Created on: Dec 12, 2016
- * Author: Tiffany Huang
- */
-
-#include "particle_filter.h"
+#include "../include/particle_filter.h"
 
 #include <math.h>
 #include <algorithm>
@@ -15,8 +8,9 @@
 #include <random>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
-#include "helper_functions.h"
+#include "../include/helper_functions.h"
 
 using std::string;
 using std::vector;
@@ -30,7 +24,12 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
    * NOTE: Consult particle_filter.h for more information about this method 
    *   (and others in this file).
    */
-  num_particles = 0;  // TODO: Set the number of particles
+  num_particles = 100;  // TODO: Set the number of particles
+  double std_x = 2, std_y = 2, std_theta = 0.05;
+  for (int i = 0; i < num_particles; i++) {
+      particles.emplace_back(Particle{i, Util::random_gaussian_noise(x, std_x), Util::random_gaussian_noise(y, std_y), Util::random_gaussian_noise(theta, std_theta), 1});
+  }
+  is_initialized = true;
 
 }
 
@@ -43,24 +42,31 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
    *  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
    *  http://www.cplusplus.com/reference/random/default_random_engine/
    */
+   for (auto &particle : particles) {
+       double new_x = particle.x + velocity / yaw_rate * (std::sin(particle.theta + yaw_rate * delta_t) - std::sin(particle.theta));
+       double new_y = particle.y + velocity / yaw_rate * (std::cos(particle.theta) - cos(particle.theta + yaw_rate * delta_t));
+       double new_theta = particle.theta + yaw_rate * delta_t;
 
+       particle.x = Util::random_gaussian_noise(new_x, std_pos[0]);
+       particle.y = Util::random_gaussian_noise(new_y, std_pos[1]);
+       particle.theta = Util::random_gaussian_noise(new_theta, std_pos[2]);
+   }
 }
 
-void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted, 
-                                     vector<LandmarkObs>& observations) {
+void ParticleFilter::dataAssociation(const vector<Util::LandmarkObs>& predicted,
+                                     vector<Util::LandmarkObs>& observations) {
   /**
-   * TODO: Find the predicted measurement that is closest to each 
+   *  Find the predicted measurement that is closest to each
    *   observed measurement and assign the observed measurement to this 
    *   particular landmark.
-   * NOTE: this method will NOT be called by the grading code. But you will 
-   *   probably find it useful to implement this method and use it as a helper 
-   *   during the updateWeights phase.
    */
-
+    for (auto &observed_landmark : observations) {
+        observed_landmark.id = Util::NearestNeighbor(predicted, observed_landmark).id;
+    }
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
-                                   const vector<LandmarkObs> &observations, 
+                                   const vector<Util::LandmarkObs> &observations,
                                    const Map &map_landmarks) {
   /**
    * TODO: Update the weights of each particle using a mult-variate Gaussian 
@@ -75,6 +81,33 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    *   and the following is a good resource for the actual equation to implement
    *   (look at equation 3.33) http://planning.cs.uiuc.edu/node99.html
    */
+
+   for (auto &particle : particles) {
+       // transform the coordinates measured in vehicle space to particle space using homogenous transformation
+       vector<Util::LandmarkObs> transformed_observation;
+       for (auto &observation : observations) {
+           transformed_observation.emplace_back(Util::HomogenousTransformation(observation, particle.x, particle.y, particle.theta));
+       }
+
+       // get the predicted landmarks based on sensor_range
+       vector<Util::LandmarkObs> predicted_landmarks;
+       std::unordered_map<int, Util::LandmarkObs> id_map;
+       for (auto &landmakr : map_landmarks.landmark_list) {
+           if (fabs(landmakr.x_f - particle.x) <= sensor_range && fabs(landmakr.y_f - particle.y) <= sensor_range) {
+               predicted_landmarks.emplace_back(Util::LandmarkObs{landmakr.id_i, landmakr.x_f, landmakr.y_f});
+               id_map[landmakr.id_i] = predicted_landmarks[predicted_landmarks.size() - 1];
+           }
+       }
+
+       // Associate the each trasnformed observation to their cloest landmarks
+       dataAssociation(predicted_landmarks, transformed_observation);
+
+       // update weight using the multivariate gussian distribution
+       for (auto &transformed_obs : transformed_observation) {
+           particle.weight *= Util::MultiVariateGaussian(std_landmark, transformed_obs, id_map[transformed_obs.id]);
+       }
+
+   }
 
 }
 

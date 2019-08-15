@@ -1,11 +1,3 @@
-/**
- * particle_filter.h
- * 2D particle filter class.
- *
- * Created on: Dec 12, 2016
- * Author: Tiffany Huang
- */
-
 #ifndef PARTICLE_FILTER_H_
 #define PARTICLE_FILTER_H_
 
@@ -63,8 +55,8 @@ class ParticleFilter {
    * @param predicted Vector of predicted landmark observations
    * @param observations Vector of landmark observations
    */
-  void dataAssociation(std::vector<LandmarkObs> predicted, 
-                       std::vector<LandmarkObs>& observations);
+  void dataAssociation(const std::vector<Util::LandmarkObs>& predicted,
+                       std::vector<Util::LandmarkObs>& observations);
   
   /**
    * updateWeights Updates the weights for each particle based on the likelihood
@@ -76,7 +68,7 @@ class ParticleFilter {
    * @param map Map class containing map landmarks
    */
   void updateWeights(double sensor_range, double std_landmark[], 
-                     const std::vector<LandmarkObs> &observations,
+                     const std::vector<Util::LandmarkObs> &observations,
                      const Map &map_landmarks);
   
   /**
