@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <iostream>
 #include <random>
 #include "map.h"
 
@@ -67,7 +68,12 @@ namespace Util {
                  closest = pool[i];
              }
          }
+
         return closest;
+     }
+
+     inline double Precision() {
+         return 1e-4;
      }
 
      /**
@@ -75,8 +81,9 @@ namespace Util {
       */
       inline double MultiVariateGaussian(double std_landmark[],const LandmarkObs& target, const LandmarkObs& nearest_landmark) {
           double normalization = 1 / (2 * M_PI * std_landmark[0] * std_landmark[1]);
-          double exponential = std::exp(-(std::pow(target.x - nearest_landmark.x, 2) / (2 * std::pow(std_landmark[0], 2)) +
-                  std::pow(target.y - nearest_landmark.y, 2) / (2 * std::pow(std_landmark[1], 2))));
+          double x_term = std::pow(target.x - nearest_landmark.x, 2) / (2 * std::pow(std_landmark[0], 2));
+          double y_term = std::pow(target.y - nearest_landmark.y, 2) / (2 * std::pow(std_landmark[1], 2));
+          double exponential = std::exp(-(x_term + y_term));
           return normalization * exponential;
       }
 
@@ -85,8 +92,8 @@ namespace Util {
      */
     inline LandmarkObs HomogenousTransformation(const LandmarkObs& observation, double x, double y, double theta) {
         LandmarkObs transformed_obs;
-        double transformed_x = observation.x + (std::cos(theta) * x) - (std::sin(theta) * y);
-        double transformed_y = observation.y + (std::sin(theta) * x) - (std::cos(theta) * y);
+        double transformed_x = x + (std::cos(theta) * observation.x) - (std::sin(theta) * observation.y);
+        double transformed_y = y + (std::sin(theta) * observation.x) + (std::cos(theta) * observation.y);
         transformed_obs.x = transformed_x;
         transformed_obs.y = transformed_y;
         return transformed_obs;
@@ -238,14 +245,7 @@ namespace Util {
         }
         return true;
     }
-    /**
-     * Get Random Gaussian Noise
-     */
-     inline double random_gaussian_noise(double mean, double std) {
-         std::default_random_engine eng;
-         std::normal_distribution<double> dist(mean, std);
-         return dist(eng);
-     }
+
 /**
  * Reads landmark observation data from a file.
  * @param filename Name of file containing landmark observation measurements.

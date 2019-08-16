@@ -24,12 +24,15 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
    * NOTE: Consult particle_filter.h for more information about this method 
    *   (and others in this file).
    */
-  num_particles = 100;  // TODO: Set the number of particles
-  double std_x = 2, std_y = 2, std_theta = 0.05;
-  for (int i = 0; i < num_particles; i++) {
-      particles.emplace_back(Particle{i, Util::random_gaussian_noise(x, std_x), Util::random_gaussian_noise(y, std_y), Util::random_gaussian_noise(theta, std_theta), 1});
-  }
-  is_initialized = true;
+    std::normal_distribution<double> dist_x(x, std[0]);
+    std::normal_distribution<double> dist_y(y, std[1]);
+    std::normal_distribution<double> dist_theta(theta, std[2]);
+    std::default_random_engine gen;
+    num_particles = 100;  // TODO: Set the number of particles
+    for (int i = 0; i < num_particles; i++) {
+        particles.emplace_back(Particle{i, dist_x(gen), dist_y(gen), dist_theta(gen), 1});
+    }
+    is_initialized = true;
 
 }
 
@@ -42,15 +45,30 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
    *  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
    *  http://www.cplusplus.com/reference/random/default_random_engine/
    */
-   for (auto &particle : particles) {
-       double new_x = particle.x + velocity / yaw_rate * (std::sin(particle.theta + yaw_rate * delta_t) - std::sin(particle.theta));
-       double new_y = particle.y + velocity / yaw_rate * (std::cos(particle.theta) - cos(particle.theta + yaw_rate * delta_t));
-       double new_theta = particle.theta + yaw_rate * delta_t;
 
-       particle.x = Util::random_gaussian_noise(new_x, std_pos[0]);
-       particle.y = Util::random_gaussian_noise(new_y, std_pos[1]);
-       particle.theta = Util::random_gaussian_noise(new_theta, std_pos[2]);
+    std::default_random_engine gen;
+
+    // generate random Gaussian noise
+    std::normal_distribution<double> N_x(0, std_pos[0]);
+    std::normal_distribution<double> N_y(0, std_pos[1]);
+    std::normal_distribution<double> N_theta(0, std_pos[2]);
+   for (auto &particle : particles) {
+       if (fabs(yaw_rate) < Util::Precision()) { // if velocity is constant
+           particle.x += velocity * delta_t * cos(particle.theta);
+           particle.y += velocity * delta_t * sin(particle.theta);
+       } else {
+           particle.x += velocity / yaw_rate * ( sin( particle.theta + yaw_rate*delta_t ) - sin(particle.theta) );
+           particle.y += velocity / yaw_rate * ( cos( particle.theta ) - cos( particle.theta + yaw_rate*delta_t ) );
+           particle.theta += yaw_rate * delta_t;
+       }
+
+
+       particle.x += N_x(gen);
+       particle.y += N_y(gen);
+       particle.theta += N_theta(gen);
    }
+
+
 }
 
 void ParticleFilter::dataAssociation(const vector<Util::LandmarkObs>& predicted,
@@ -69,7 +87,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
                                    const vector<Util::LandmarkObs> &observations,
                                    const Map &map_landmarks) {
   /**
-   * TODO: Update the weights of each particle using a mult-variate Gaussian 
+   *  Update the weights of each particle using a mult-variate Gaussian
    *   distribution. You can read more about this distribution here: 
    *   https://en.wikipedia.org/wiki/Multivariate_normal_distribution
    * NOTE: The observations are given in the VEHICLE'S coordinate system. 
@@ -82,7 +100,9 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    *   (look at equation 3.33) http://planning.cs.uiuc.edu/node99.html
    */
 
+
    for (auto &particle : particles) {
+       particle.weight = 1;
        // transform the coordinates measured in vehicle space to particle space using homogenous transformation
        vector<Util::LandmarkObs> transformed_observation;
        for (auto &observation : observations) {
@@ -106,20 +126,54 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
        for (auto &transformed_obs : transformed_observation) {
            particle.weight *= Util::MultiVariateGaussian(std_landmark, transformed_obs, id_map[transformed_obs.id]);
        }
-
    }
 
 }
 
 void ParticleFilter::resample() {
   /**
-   * TODO: Resample particles with replacement with probability proportional 
+   * Resample particles with replacement with probability proportional
    *   to their weight. 
    * NOTE: You may find std::discrete_distribution helpful here.
    *   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
    */
 
+    vector<Particle> new_particles;
+    std::default_random_engine gen;
+    // get all of the current weights
+    vector<double> weights;
+    double max_weight = 0;
+    for (int i = 0; i < num_particles; i++) {
+        weights.push_back(particles[i].weight);
+        max_weight = std::max(max_weight, particles[i].weight);
+    }
+
+    // generate random starting index for resampling wheel
+    std::uniform_int_distribution<int> uniintdist(0, num_particles-1);
+    auto index = uniintdist(gen);
+
+    // uniform random distribution [0.0, max_weight)
+    std::uniform_real_distribution<double> unirealdist(0.0, max_weight);
+
+    double beta = 0.0;
+
+    // spin the resample wheel!
+    for (int i = 0; i < num_particles; i++) {
+        beta += unirealdist(gen) * 2.0;
+        while (beta > weights[index]) {
+            beta -= weights[index];
+            index = (index + 1) % num_particles;
+        }
+        new_particles.push_back(particles[index]);
+    }
+
+    particles = new_particles;
+
 }
+
+//Particle sample_based_on_weight() {
+//    total_
+//}
 
 void ParticleFilter::SetAssociations(Particle& particle, 
                                      const vector<int>& associations, 
